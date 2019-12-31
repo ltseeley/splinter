@@ -20,12 +20,12 @@ extern crate diesel;
 mod action;
 mod error;
 
-use crate::error::CliError;
-use action::{admin, certs, Action, SubcommandActions};
-
 use clap::clap_app;
 use flexi_logger::{DeferredNow, LogSpecBuilder, Logger};
 use log::Record;
+
+use action::{admin, certs, Action, SubcommandActions};
+use error::CliError;
 
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
