@@ -30,15 +30,6 @@ use error::CliError;
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// log format for cli that will only show the log message
-pub fn log_format(
-    w: &mut dyn std::io::Write,
-    _now: &mut DeferredNow,
-    record: &Record,
-) -> Result<(), std::io::Error> {
-    write!(w, "{}", record.args(),)
-}
-
 fn run() -> Result<(), CliError> {
     // ignore unused_mut while there are experimental features
     #[allow(unused_mut)]
@@ -143,14 +134,7 @@ fn run() -> Result<(), CliError> {
             _ => log::LevelFilter::Trace,
         }
     };
-
-    let mut log_spec_builder = LogSpecBuilder::new();
-    log_spec_builder.default(log_level);
-
-    let mut logger_handle = Logger::with(log_spec_builder.build())
-        .format(log_format)
-        .start()
-        .expect("Failed to create logger");
+    setup_logging(log_level);
 
     let mut subcommands = SubcommandActions::new()
         .with_command(
@@ -189,4 +173,22 @@ fn main() {
         error!("ERROR: {}", e);
         std::process::exit(1);
     }
+}
+
+fn setup_logging(log_level: log::LevelFilter) {
+    let mut log_spec_builder = LogSpecBuilder::new();
+    log_spec_builder.default(log_level);
+    Logger::with(log_spec_builder.build())
+        .format(log_format)
+        .start()
+        .expect("Failed to create logger");
+}
+
+// log format for cli that will only show the log message
+fn log_format(
+    w: &mut dyn std::io::Write,
+    _now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), std::io::Error> {
+    write!(w, "{}", record.args(),)
 }
