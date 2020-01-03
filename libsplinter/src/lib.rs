@@ -61,6 +61,8 @@ pub mod admin;
 pub mod biome;
 pub mod channel;
 pub mod circuit;
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod collections;
 pub mod consensus;
 #[cfg(feature = "database")]
