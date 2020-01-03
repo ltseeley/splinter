@@ -18,19 +18,18 @@ extern crate log;
 extern crate diesel;
 
 mod action;
-mod error;
 
-use clap::clap_app;
+use clap::{clap_app, ArgMatches};
 use flexi_logger::{DeferredNow, LogSpecBuilder, Logger};
 use log::Record;
+use splinter::cli::{Action, Arguments, Error, SubcommandActions};
 
-use action::{admin, certs, Action, SubcommandActions};
-use error::CliError;
+use action::{admin, certs};
 
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn run() -> Result<(), CliError> {
+fn run() -> Result<(), Error> {
     // ignore unused_mut while there are experimental features
     #[allow(unused_mut)]
     let mut app = clap_app!(myapp =>
@@ -136,6 +135,10 @@ fn run() -> Result<(), CliError> {
     };
     setup_logging(log_level);
 
+    let arguments = ClapArguments {
+        arg_matches: Some(&matches),
+    };
+
     let mut subcommands = SubcommandActions::new()
         .with_command(
             "admin",
@@ -165,7 +168,7 @@ fn run() -> Result<(), CliError> {
             SubcommandActions::new().with_command("migrate", database::MigrateAction),
         )
     }
-    subcommands.run(Some(&matches))
+    subcommands.run(&arguments)
 }
 
 fn main() {
@@ -191,4 +194,42 @@ fn log_format(
     record: &Record,
 ) -> Result<(), std::io::Error> {
     write!(w, "{}", record.args(),)
+}
+
+struct ClapArguments<'a> {
+    arg_matches: Option<&'a ArgMatches<'a>>,
+}
+
+impl Arguments for ClapArguments<'_> {
+    fn value_of(&self, arg_name: &str) -> Option<&str> {
+        self.arg_matches
+            .and_then(|arg_matches| arg_matches.value_of(arg_name))
+    }
+
+    fn values_of(&self, arg_name: &str) -> Option<Vec<&str>> {
+        self.arg_matches
+            .and_then(|arg_matches| arg_matches.values_of(arg_name))
+            .map(|values| values.collect())
+    }
+
+    fn is_present(&self, arg_name: &str) -> bool {
+        match self.arg_matches {
+            Some(arg_matches) => arg_matches.is_present(arg_name),
+            None => false,
+        }
+    }
+
+    fn subcommand<'a, 'b: 'a>(&'b self) -> Option<(&str, Box<dyn Arguments + 'a>)> {
+        self.arg_matches.and_then(|arg_matches| {
+            let (subcommand, arg_matches) = arg_matches.subcommand();
+            if subcommand.is_empty() {
+                None
+            } else {
+                Some((
+                    subcommand,
+                    Box::new(ClapArguments { arg_matches }) as Box<dyn Arguments>,
+                ))
+            }
+        })
+    }
 }

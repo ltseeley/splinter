@@ -53,7 +53,6 @@ path = "src/main.rs"
 clap = "2"
 diesel = { version = "1.0", features = ["postgres"], optional = true }
 flexi_logger = "0.14"
-libc = "0.2"
 log = "0.4"
 openssl = "0.10"
 protobuf = "2"
@@ -62,7 +61,7 @@ sawtooth-sdk = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version ="1.0", optional = true }
 serde_yaml = "0.8"
-splinter = { path = "../libsplinter" }
+splinter = { path = "../libsplinter", features = ["cli"] }
 
 [package.metadata.deb]
 maintainer = "The Splinter Team"

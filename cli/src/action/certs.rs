@@ -24,7 +24,6 @@ use std::os::linux::fs::MetadataExt;
 #[cfg(not(target_os = "linux"))]
 use std::os::unix::fs::MetadataExt;
 
-use clap::ArgMatches;
 use openssl::asn1::Asn1Time;
 use openssl::bn::{BigNum, MsbOption};
 use openssl::error::ErrorStack;
@@ -33,10 +32,7 @@ use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::rsa::Rsa;
 use openssl::x509::extension::{BasicConstraints, ExtendedKeyUsage, KeyUsage};
 use openssl::x509::{X509NameBuilder, X509Ref, X509};
-
-use crate::error::CliError;
-
-use super::{chown, Action};
+use splinter::cli::{chown, Action, Arguments, Error};
 
 pub struct CertGenAction;
 
@@ -51,9 +47,7 @@ const CA_CERT: &str = "generated_ca.pem";
 const CA_KEY: &str = "generated_ca.key";
 
 impl Action for CertGenAction {
-    fn run<'a>(&mut self, arg_matches: Option<&ArgMatches<'a>>) -> Result<(), CliError> {
-        let args = arg_matches.ok_or_else(|| CliError::RequiresArgs)?;
-
+    fn run<'a>(&mut self, args: &dyn Arguments) -> Result<(), Error> {
         let common_name = args
             .value_of("common_name")
             .unwrap_or("localhost")
@@ -70,7 +64,7 @@ impl Action for CertGenAction {
 
         // Check if the provided cert directory exists
         if !cert_dir.is_dir() {
-            return Err(CliError::ActionError(format!(
+            return Err(Error(format!(
                 "Cert directory does not exist: {}",
                 cert_dir.display()
             )));
@@ -81,23 +75,22 @@ impl Action for CertGenAction {
 
         // Check if the provided private key directory for the certs exists, if not create it
         if !private_cert_path.is_dir() {
-            fs::create_dir_all(private_cert_path.clone()).map_err(|err| {
-                CliError::ActionError(format!("Unable to create private directory: {}", err))
-            })?
+            fs::create_dir_all(private_cert_path.clone())
+                .map_err(|err| Error(format!("Unable to create private directory: {}", err)))?
         }
 
         // check that both directories are writable
         match cert_dir.metadata() {
             Ok(metadata) => {
                 if metadata.permissions().readonly() {
-                    return Err(CliError::ActionError(format!(
+                    return Err(Error(format!(
                         "Cert directory is not writeable: {}",
                         absolute_path(&cert_dir)?,
                     )));
                 }
             }
             Err(err) => {
-                return Err(CliError::ActionError(format!(
+                return Err(Error(format!(
                     "Cannot check if cert directory {} is writable: {}",
                     absolute_path(&cert_dir)?,
                     err
@@ -108,14 +101,14 @@ impl Action for CertGenAction {
         match private_cert_path.metadata() {
             Ok(metadata) => {
                 if metadata.permissions().readonly() {
-                    return Err(CliError::ActionError(format!(
+                    return Err(Error(format!(
                         "Private cert directory is not writeable: {}",
                         absolute_path(&private_cert_path)?
                     )));
                 }
             }
             Err(err) => {
-                return Err(CliError::ActionError(format!(
+                return Err(Error(format!(
                     "Cannot check if cert directory {} is writable: {}",
                     absolute_path(&private_cert_path)?,
                     err
@@ -126,7 +119,7 @@ impl Action for CertGenAction {
         // if skip, check each pair of certificate/key to see if it exists. If not generate the
         // the missing files. If only one of the two files exists, this is an error.
         if args.is_present("skip") {
-            return handle_skip(cert_path, private_cert_path, common_name);
+            return Ok(handle_skip(cert_path, private_cert_path, common_name)?);
         }
 
         // if force is not present, all files must not exist.
@@ -185,9 +178,7 @@ impl Action for CertGenAction {
             }
 
             if errored {
-                return Err(CliError::ActionError(
-                    "Refusing to overwrite files, exiting".into(),
-                ));
+                return Err(Error("Refusing to overwrite files, exiting".into()));
             } else {
                 // if all files need to be generated log what will be written and generate all
                 log_writing(&cert_path, &private_cert_path)?;
@@ -209,7 +200,7 @@ fn handle_skip(
     cert_dir: PathBuf,
     private_cert_path: PathBuf,
     common_name: String,
-) -> Result<(), CliError> {
+) -> Result<(), CertError> {
     let client_cert_path = cert_dir.join(CLIENT_CERT);
     let server_cert_path = cert_dir.join(SERVER_CERT);
     let ca_cert_path = cert_dir.join(CA_CERT);
@@ -257,13 +248,13 @@ fn handle_skip(
     {
         // if one exists without the other return an error
         if ca_cert_path.exists() {
-            return Err(CliError::ActionError(format!(
+            return Err(CertError(format!(
                 "Matching key for the certificate is missing: {}/{} ",
                 absolute_path(&cert_path)?,
                 CA_KEY
             )));
         } else {
-            return Err(CliError::ActionError(format!(
+            return Err(CertError(format!(
                 "Matching certificate for the key is missing: {}/{} ",
                 absolute_path(&private_cert_path)?,
                 CA_CERT
@@ -276,13 +267,13 @@ fn handle_skip(
     {
         // if one exists without the other return an error
         if client_cert_path.exists() {
-            return Err(CliError::ActionError(format!(
+            return Err(CertError(format!(
                 "Matching key for the certificate is missing: {}/{} ",
                 absolute_path(&cert_path)?,
                 CLIENT_KEY
             )));
         } else {
-            return Err(CliError::ActionError(format!(
+            return Err(CertError(format!(
                 "Matching certificate for the key is missing: {}/{} ",
                 absolute_path(&private_cert_path)?,
                 CLIENT_CERT
@@ -295,13 +286,13 @@ fn handle_skip(
     {
         // if one exists without the other return an error
         if server_cert_path.exists() {
-            return Err(CliError::ActionError(format!(
+            return Err(CertError(format!(
                 "Matching key for the certificate is missing: {}/{} ",
                 absolute_path(&cert_path)?,
                 SERVER_KEY
             )));
         } else {
-            return Err(CliError::ActionError(format!(
+            return Err(CertError(format!(
                 "Matching certificate for the key is missing: {}/{} ",
                 absolute_path(&private_cert_path)?,
                 SERVER_CERT
@@ -365,7 +356,7 @@ fn handle_skip(
             ca = Some((ca_key, ca_cert));
         } else {
             // this should never happen
-            return Err(CliError::ActionError("CA does not exist".into()));
+            return Err(CertError("CA does not exist".into()));
         }
     }
 
@@ -400,7 +391,7 @@ fn handle_skip(
             )?;
         } else {
             // this should never happen
-            return Err(CliError::ActionError("CA does not exist".into()));
+            return Err(CertError("CA does not exist".into()));
         }
     }
     Ok(())
@@ -411,7 +402,7 @@ fn create_all_certs(
     cert_path: PathBuf,
     private_cert_path: PathBuf,
     common_name: String,
-) -> Result<(), CliError> {
+) -> Result<(), CertError> {
     // Generate Certificate Authority keys and certificate.
     // These files are not saved
     let (ca_key, ca_cert) = write_ca(cert_path.clone(), private_cert_path.clone())?;
@@ -440,7 +431,7 @@ fn create_all_certs(
 fn write_ca(
     cert_path: PathBuf,
     private_cert_path: PathBuf,
-) -> Result<(PKey<Private>, X509), CliError> {
+) -> Result<(PKey<Private>, X509), CertError> {
     let (ca_key, ca_cert) = make_ca_cert()?;
 
     write_file(cert_path, CA_CERT, &ca_cert.to_pem()?)?;
@@ -461,7 +452,7 @@ fn write_server(
     ca_key: &PKey<Private>,
     ca_cert: &X509,
     common_name: &str,
-) -> Result<(), CliError> {
+) -> Result<(), CertError> {
     let (server_key, server_cert) = make_ca_signed_cert(ca_cert, ca_key, common_name)?;
 
     write_file(cert_path, SERVER_CERT, &server_cert.to_pem()?)?;
@@ -481,7 +472,7 @@ fn write_client(
     ca_key: &PKey<Private>,
     ca_cert: &X509,
     common_name: &str,
-) -> Result<(), CliError> {
+) -> Result<(), CertError> {
     let (server_key, server_cert) = make_ca_signed_cert(ca_cert, ca_key, common_name)?;
 
     write_file(cert_path, CLIENT_CERT, &server_cert.to_pem()?)?;
@@ -495,7 +486,7 @@ fn write_client(
 }
 
 // Make a certificate and private key for the Certificate  Authority
-fn make_ca_cert() -> Result<(PKey<Private>, X509), CliError> {
+fn make_ca_cert() -> Result<(PKey<Private>, X509), CertError> {
     // generate private key
     let rsa = Rsa::generate(2048)?;
     let privkey = PKey::from_rsa(rsa)?;
@@ -533,7 +524,7 @@ fn make_ca_signed_cert(
     ca_cert: &X509Ref,
     ca_privkey: &PKeyRef<Private>,
     common_name: &str,
-) -> Result<(PKey<Private>, X509), CliError> {
+) -> Result<(PKey<Private>, X509), CertError> {
     // generate private key
     let rsa = Rsa::generate(2048)?;
     let privkey = PKey::from_rsa(rsa)?;
@@ -578,15 +569,13 @@ fn make_ca_signed_cert(
 
 /// write the a file to a temp file name and then rename to final filename
 /// this will guarantee that the final file will ony ever contain valid data
-fn write_file(path_buf: PathBuf, file_name: &str, bytes: &[u8]) -> Result<(), CliError> {
+fn write_file(path_buf: PathBuf, file_name: &str, bytes: &[u8]) -> Result<(), CertError> {
     let temp_path_buf = path_buf.join(format!(".{}.new", file_name));
     let temp_path = {
         if let Some(path) = temp_path_buf.to_str() {
             path.to_string()
         } else {
-            return Err(CliError::ActionError(
-                "Path is not valid unicode".to_string(),
-            ));
+            return Err(CertError("Path is not valid unicode".to_string()));
         }
     };
 
@@ -595,9 +584,7 @@ fn write_file(path_buf: PathBuf, file_name: &str, bytes: &[u8]) -> Result<(), Cl
         if let Some(path) = final_path_buf.to_str() {
             path.to_string()
         } else {
-            return Err(CliError::ActionError(
-                "Path is not valid unicode".to_string(),
-            ));
+            return Err(CertError("Path is not valid unicode".to_string()));
         }
     };
 
@@ -611,7 +598,7 @@ fn write_file(path_buf: PathBuf, file_name: &str, bytes: &[u8]) -> Result<(), Cl
 
     // change permissions
     let dir = path_buf.as_path();
-    let dir_info = metadata(dir).map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+    let dir_info = metadata(dir).map_err(|err| CertError(format!("{}", err)))?;
     #[cfg(not(target_os = "linux"))]
     let (dir_uid, dir_gid) = (dir_info.uid(), dir_info.gid());
     #[cfg(target_os = "linux")]
@@ -625,26 +612,24 @@ fn write_file(path_buf: PathBuf, file_name: &str, bytes: &[u8]) -> Result<(), Cl
 
 // helper function to get the absolute_path of a provided path
 // this will be used in logging
-fn absolute_path(path: &Path) -> Result<String, CliError> {
+fn absolute_path(path: &Path) -> Result<String, CertError> {
     let temp_path_buf = fs::canonicalize(path)?;
     if let Some(path) = temp_path_buf.to_str() {
         Ok(path.to_string())
     } else {
-        Err(CliError::ActionError(
-            "Path is not valid unicode".to_string(),
-        ))
+        Err(CertError("Path is not valid unicode".to_string()))
     }
 }
 
 // create a X509 certficate from a file
-fn get_ca_cert(cert_path: &Path) -> Result<X509, CliError> {
+fn get_ca_cert(cert_path: &Path) -> Result<X509, CertError> {
     let cert = fs::read(cert_path)?;
     let cert = X509::from_pem(&cert)?;
     Ok(cert)
 }
 
 // create a PKey<Private> from a file
-fn get_ca_key(key_path: &Path) -> Result<PKey<Private>, CliError> {
+fn get_ca_key(key_path: &Path) -> Result<PKey<Private>, CertError> {
     let key = fs::read(key_path)?;
     let rsa = Rsa::private_key_from_pem(&key)?;
     let privkey = PKey::from_rsa(rsa)?;
@@ -652,7 +637,7 @@ fn get_ca_key(key_path: &Path) -> Result<PKey<Private>, CliError> {
 }
 
 // helper function to log what files will be written
-fn log_writing(cert_path: &PathBuf, private_cert_path: &PathBuf) -> Result<(), CliError> {
+fn log_writing(cert_path: &PathBuf, private_cert_path: &PathBuf) -> Result<(), CertError> {
     info!("Writing file: {}/{}", absolute_path(cert_path)?, CA_CERT);
     info!(
         "Writing file: {}/{}",
@@ -685,7 +670,7 @@ fn log_writing(cert_path: &PathBuf, private_cert_path: &PathBuf) -> Result<(), C
 }
 
 // helper function to log what files will be overwritten
-fn log_overwriting(cert_path: &PathBuf, private_cert_path: &PathBuf) -> Result<(), CliError> {
+fn log_overwriting(cert_path: &PathBuf, private_cert_path: &PathBuf) -> Result<(), CertError> {
     info!(
         "Overwriting file: {}/{}",
         absolute_path(cert_path)?,
@@ -721,14 +706,30 @@ fn log_overwriting(cert_path: &PathBuf, private_cert_path: &PathBuf) -> Result<(
     Ok(())
 }
 
-impl From<io::Error> for CliError {
-    fn from(io_error: io::Error) -> Self {
-        CliError::ActionError(io_error.to_string())
+/// This internal error type allows for implementing the `From<io::Error>` and `From<ErrorStack>`
+/// traits for easy conversion.
+struct CertError(pub String);
+
+impl From<CertError> for Error {
+    fn from(cert_error: CertError) -> Self {
+        Error(cert_error.0)
     }
 }
 
-impl From<ErrorStack> for CliError {
+impl From<Error> for CertError {
+    fn from(error: Error) -> Self {
+        CertError(error.0)
+    }
+}
+
+impl From<io::Error> for CertError {
+    fn from(io_error: io::Error) -> Self {
+        CertError(io_error.to_string())
+    }
+}
+
+impl From<ErrorStack> for CertError {
     fn from(error_stack: ErrorStack) -> Self {
-        CliError::ActionError(error_stack.to_string())
+        CertError(error_stack.to_string())
     }
 }

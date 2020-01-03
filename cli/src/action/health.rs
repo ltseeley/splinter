@@ -12,31 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use clap::ArgMatches;
 use reqwest;
 use serde_json::Value;
-
-use super::Action;
-use crate::error::CliError;
+use splinter::cli::{Action, Arguments, Error};
 
 pub struct StatusAction;
 
 impl Action for StatusAction {
-    fn run<'a>(&mut self, arg_matches: Option<&ArgMatches<'a>>) -> Result<(), CliError> {
-        let url = if let Some(args) = arg_matches {
-            args.value_of("url").unwrap_or("http://localhost:8085")
-        } else {
-            "http://localhost:8085"
-        };
+    fn run<'a>(&mut self, args: &dyn Arguments) -> Result<(), Error> {
+        let url = args.value_of("url").unwrap_or("http://localhost:8085");
 
         let status: Value = reqwest::get(&format!("{}/health/status", url))
             .and_then(|mut res| res.json())
-            .map_err(|err| CliError::ActionError(format!("{:?}", err)))?;
+            .map_err(|err| Error(format!("Status request failed: {:?}", err)))?;
 
         println!(
             "{}",
             serde_json::to_string_pretty(&status)
-                .map_err(|_| CliError::ActionError("Failed to serialize response".into()))?
+                .map_err(|err| Error(format!("Failed to deserialize response: {}", err)))?
         );
         Ok(())
     }

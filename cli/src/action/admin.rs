@@ -25,14 +25,10 @@ use std::os::linux::fs::MetadataExt;
 #[cfg(not(target_os = "linux"))]
 use std::os::unix::fs::MetadataExt;
 
-use clap::ArgMatches;
 use sawtooth_sdk::signing;
 use serde::{Deserialize, Serialize};
+use splinter::cli::{chown, Action, Arguments, Error};
 use splinter::keys::{storage::StorageKeyRegistry, KeyInfo, KeyRegistry};
-
-use crate::error::CliError;
-
-use super::{chown, Action};
 
 const DEFAULT_STATE_DIR: &str = "/var/lib/splinter/";
 const STATE_DIR_ENV: &str = "SPLINTER_STATE_DIR";
@@ -40,9 +36,7 @@ const STATE_DIR_ENV: &str = "SPLINTER_STATE_DIR";
 pub struct KeyGenAction;
 
 impl Action for KeyGenAction {
-    fn run<'a>(&mut self, arg_matches: Option<&ArgMatches<'a>>) -> Result<(), CliError> {
-        let args = arg_matches.ok_or_else(|| CliError::RequiresArgs)?;
-
+    fn run<'a>(&mut self, args: &dyn Arguments) -> Result<(), Error> {
         let key_name = args.value_of("key_name").unwrap_or("splinter");
         let key_dir = args
             .value_of("key_dir")
@@ -68,9 +62,7 @@ impl Action for KeyGenAction {
 pub struct KeyRegistryGenerationAction;
 
 impl Action for KeyRegistryGenerationAction {
-    fn run<'a>(&mut self, arg_matches: Option<&ArgMatches<'a>>) -> Result<(), CliError> {
-        let args = arg_matches.ok_or_else(|| CliError::RequiresArgs)?;
-
+    fn run<'a>(&mut self, args: &dyn Arguments) -> Result<(), Error> {
         let registry_spec_path = args
             .value_of("registry_spec_path")
             .or(Some("./key_registry_spec.yaml"))
@@ -96,13 +88,13 @@ impl Action for KeyRegistryGenerationAction {
         let registry_file_exists = target_registry_path.exists();
         if registry_file_exists {
             if !force_write {
-                return Err(CliError::EnvironmentError(format!(
+                return Err(Error(format!(
                     "file exists: {}",
                     target_registry_path.display()
                 )));
             } else {
                 std::fs::remove_file(&target_registry_path).map_err(|err| {
-                    CliError::EnvironmentError(format!(
+                    Error(format!(
                         "Unable to overwrite {}: {}",
                         target_registry_path.display(),
                         err
@@ -112,7 +104,7 @@ impl Action for KeyRegistryGenerationAction {
         }
 
         let registry_spec_file = File::open(&registry_spec_path).map_err(|err| {
-            CliError::ActionError(format!(
+            Error(format!(
                 "Unable to open key registry spec {}: {}",
                 registry_spec_path.display(),
                 err
@@ -121,7 +113,7 @@ impl Action for KeyRegistryGenerationAction {
 
         let registry_spec: KeyRegistrySpec =
             serde_yaml::from_reader(registry_spec_file).map_err(|err| {
-                CliError::ActionError(format!(
+                Error(format!(
                     "Unable to read key registry {}: {}",
                     registry_spec_path.display(),
                     err
@@ -133,7 +125,7 @@ impl Action for KeyRegistryGenerationAction {
                 .as_os_str()
                 .to_str()
                 .ok_or_else(|| {
-                    CliError::EnvironmentError(format!(
+                    Error(format!(
                         "Key registry output file {} contains invalid characters",
                         target_registry_path.display()
                     ))
@@ -141,7 +133,7 @@ impl Action for KeyRegistryGenerationAction {
                 .to_string(),
         )
         .map_err(|err| {
-            CliError::EnvironmentError(format!(
+            Error(format!(
                 "Unable to read {}: {}",
                 target_registry_path.display(),
                 err
@@ -177,7 +169,7 @@ impl Action for KeyRegistryGenerationAction {
 
         key_registry
             .save_keys(key_infos)
-            .map_err(|err| CliError::ActionError(format!("Unable to write keys: {}", err)))?;
+            .map_err(|err| Error(format!("Unable to write keys: {}", err)))?;
 
         Ok(())
     }
@@ -206,34 +198,27 @@ fn create_key_pair(
     public_key_path: PathBuf,
     force_create: bool,
     change_permissions: bool,
-) -> Result<Vec<u8>, CliError> {
+) -> Result<Vec<u8>, Error> {
     if !force_create {
         if private_key_path.exists() {
-            return Err(CliError::EnvironmentError(format!(
-                "file exists: {:?}",
-                private_key_path
-            )));
+            return Err(Error(format!("file exists: {:?}", private_key_path)));
         }
         if public_key_path.exists() {
-            return Err(CliError::EnvironmentError(format!(
-                "file exists: {:?}",
-                public_key_path
-            )));
+            return Err(Error(format!("file exists: {:?}", public_key_path)));
         }
     }
 
-    let context = signing::create_context("secp256k1")
-        .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+    let context = signing::create_context("secp256k1").map_err(|err| Error(format!("{}", err)))?;
 
     let private_key = context
         .new_random_private_key()
-        .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+        .map_err(|err| Error(format!("failed to generate new private key: {}", err)))?;
     let public_key = context
         .get_public_key(&*private_key)
-        .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+        .map_err(|err| Error(format!("failed to get public key: {}", err)))?;
 
-    let key_dir_info =
-        metadata(key_dir).map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+    let key_dir_info = metadata(key_dir)
+        .map_err(|err| Error(format!("failed to get key directory metadata: {}", err)))?;
 
     #[cfg(not(target_os = "linux"))]
     let (key_dir_uid, key_dir_gid) = (key_dir_info.uid(), key_dir_info.gid());
@@ -252,11 +237,11 @@ fn create_key_pair(
             .create(true)
             .mode(0o640)
             .open(private_key_path.as_path())
-            .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+            .map_err(|err| Error(format!("failed to open private key file: {}", err)))?;
 
         private_key_file
             .write(private_key.as_hex().as_bytes())
-            .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+            .map_err(|err| Error(format!("failed to write private key file: {}", err)))?;
     }
 
     {
@@ -271,11 +256,11 @@ fn create_key_pair(
             .create(true)
             .mode(0o644)
             .open(public_key_path.as_path())
-            .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+            .map_err(|err| Error(format!("failed to open public key file: {}", err)))?;
 
         public_key_file
             .write(public_key.as_hex().as_bytes())
-            .map_err(|err| CliError::EnvironmentError(format!("{}", err)))?;
+            .map_err(|err| Error(format!("failed to write public key file: {}", err)))?;
     }
     if change_permissions {
         chown(private_key_path.as_path(), key_dir_uid, key_dir_gid)?;

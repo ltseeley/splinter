@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use clap::ArgMatches;
-
-use super::Action;
-use crate::error::CliError;
 use diesel::{connection::Connection as _, pg::PgConnection};
 #[cfg(feature = "database-migrate-biome-credentials")]
 use splinter::biome::credentials::database::run_migrations as run_biome_credentials_migrations;
@@ -23,40 +19,36 @@ use splinter::biome::credentials::database::run_migrations as run_biome_credenti
 use splinter::biome::notifications::database::run_migrations as run_biome_notifications_migrations;
 #[cfg(feature = "database-migrate-biome-users")]
 use splinter::biome::users::database::run_migrations as run_biome_users_migrations;
+use splinter::cli::{Action, Arguments, Error};
 use splinter::database::run_migrations as run_setup_migrations;
 
 pub struct MigrateAction;
 
 impl Action for MigrateAction {
-    fn run<'a>(&mut self, arg_matches: Option<&ArgMatches<'a>>) -> Result<(), CliError> {
-        let url = if let Some(args) = arg_matches {
-            args.value_of("connect")
-                .unwrap_or("postgres://admin:admin@localhost:5432/splinterd")
-        } else {
-            "postgres://admin:admin@localhost:5432/splinterd"
-        };
+    fn run<'a>(&mut self, args: &dyn Arguments) -> Result<(), Error> {
+        let url = args
+            .value_of("connect")
+            .unwrap_or("postgres://admin:admin@localhost:5432/splinterd");
 
-        let connection =
-            PgConnection::establish(url).map_err(|err| CliError::DatabaseError(err.to_string()))?;
+        let connection = PgConnection::establish(url)
+            .map_err(|err| Error(format!("Failed to establish database connection: {}", err)))?;
 
-        run_setup_migrations(&connection).map_err(|err| {
-            CliError::DatabaseError(format!("Unable to run Biome setup migrations: {}", err))
-        })?;
+        run_setup_migrations(&connection)
+            .map_err(|err| Error(format!("Unable to run Biome setup migrations: {}", err)))?;
 
         #[cfg(feature = "database-migrate-biome-users")]
-        run_biome_users_migrations(&connection).map_err(|err| {
-            CliError::DatabaseError(format!("Unable to run Biome users migrations: {}", err))
-        })?;
+        run_biome_users_migrations(&connection)
+            .map_err(|err| Error(format!("Unable to run Biome users migrations: {}", err)))?;
         #[cfg(feature = "database-migrate-biome-credentials")]
         run_biome_credentials_migrations(&connection).map_err(|err| {
-            CliError::DatabaseError(format!(
+            Error(format!(
                 "Unable to run Biome credentials migrations: {}",
                 err
             ))
         })?;
         #[cfg(feature = "database-migrate-biome-notifications")]
         run_biome_notifications_migrations(&connection).map_err(|err| {
-            CliError::DatabaseError(format!(
+            Error(format!(
                 "Unable to run Biome notifications migrations: {}",
                 err
             ))
