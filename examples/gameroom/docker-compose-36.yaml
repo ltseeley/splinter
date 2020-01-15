@@ -25,7 +25,7 @@ volumes:
 services:
 
     generate-key-registry:
-        image: splintercommunity/splinter-cli:0.3.8
+        image: splintercommunity/splinter-cli:0.3.6
         volumes:
           - key-registry:/key_registry
           - ./key_registry:/input
@@ -33,7 +33,7 @@ services:
           bash -c "
             if [ ! -f /key_registry/keys.yaml ]
             then
-              splinter admin keyregistry \
+              splinter-cli admin keyregistry \
                 -i /input/key_registry_spec.yaml \
                 -d /key_registry \
                 --force
@@ -41,7 +41,7 @@ services:
           "
 
     db-acme:
-      image: splintercommunity/gameroom-database:0.3.8
+      image: splintercommunity/gameroom-database:0.3.6
       container_name: db-acme
       restart: always
       expose:
@@ -53,11 +53,10 @@ services:
         POSTGRES_PASSWORD: gameroom_example
         POSTGRES_DB: gameroom
       volumes:
-        - "./database/tables:/docker-entrypoint-initdb.d"
         - "acme-db:/var/lib/postgresql/data/"
 
     gameroom-app-acme:
-      image: splintercommunity/gameroom-app-acme:0.3.8
+      image: splintercommunity/gameroom-app-acme:0.3.6
       container_name: gameroom-app-acme
       environment:
         - VUE_APP_BRAND=acme
@@ -67,7 +66,7 @@ services:
         - '8080:80'
 
     gameroomd-acme:
-        image: splintercommunity/gameroomd:0.3.8
+        image: splintercommunity/gameroomd:0.3.6
         container_name: gameroomd-acme
         volumes:
           - cargo-registry:/root/.cargo/registry
@@ -95,7 +94,7 @@ services:
               -b gameroomd-acme:8000 --splinterd-url http://splinterd-node-acme:8085
           "
     splinterd-node-acme:
-      image: splintercommunity/splinterd:0.3.8
+      image: splintercommunity/splinterd:0.3.6
       container_name: splinterd-node-acme
       expose:
         - 8080
@@ -118,8 +117,7 @@ services:
           done && \
           # Copy the generated key registry to its expected location
           cp -a /key_registry_shared/keys.yaml /var/lib/splinter && \
-          splinter cert generate --skip && \
-          splinterd -c ./configs/splinterd-node-acme.toml -vv \
+          splinterd --generate-certs -c ./configs/splinterd-node-acme-36.toml -vv \
               --service-endpoint 0.0.0.0:8043 \
               --network-endpoint 0.0.0.0:8044 \
               --bind 0.0.0.0:8085 \
@@ -127,7 +125,7 @@ services:
         "
 
     db-bubba:
-      image: splintercommunity/gameroom-database:0.3.8
+      image: splintercommunity/gameroom-database:0.3.6
       container_name: db-bubba
       restart: always
       expose:
@@ -139,11 +137,10 @@ services:
         POSTGRES_PASSWORD: gameroom_example
         POSTGRES_DB: gameroom
       volumes:
-        - "./database/tables:/docker-entrypoint-initdb.d"
         - "bubba-db:/var/lib/postgresql/data/"
 
     gameroom-app-bubba:
-      image: splintercommunity/gameroom-app-bubba:0.3.8
+      image: splintercommunity/gameroom-app-bubba:0.3.6
       container_name: gameroom-app-bubba
       environment:
         - VUE_APP_BRAND=bubba
@@ -153,7 +150,7 @@ services:
         - '8081:80'
 
     gameroomd-bubba:
-        image: splintercommunity/gameroomd:0.3.8
+        image: splintercommunity/gameroomd:0.3.6
         container_name: gameroomd-bubba
         volumes:
           - cargo-registry:/root/.cargo/registry
@@ -182,7 +179,7 @@ services:
           "
 
     splinterd-node-bubba:
-      image: splintercommunity/splinterd:0.3.8
+      image: splintercommunity/splinterd:0.3.6
       container_name: splinterd-node-bubba
       expose:
         - 8080
@@ -205,8 +202,7 @@ services:
           done && \
           # Copy the generated key registry to its expected location
           cp -a /key_registry_shared/keys.yaml /var/lib/splinter && \
-          splinter cert generate --skip && \
-          splinterd -c ./configs/splinterd-node-bubba.toml -vv \
+          splinterd --generate-certs -c ./configs/splinterd-node-bubba-36.toml -vv \
               --service-endpoint 0.0.0.0:8043 \
               --network-endpoint 0.0.0.0:8044 \
               --bind 0.0.0.0:8085 \
