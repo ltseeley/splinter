@@ -48,12 +48,58 @@ impl<C: diesel::Connection> DieselKeyStore<C> {
     }
 }
 
-impl<C> KeyStore for DieselKeyStore<C>
-where
-    C: diesel::Connection,
-    <C as diesel::Connection>::Backend: diesel::backend::SupportsDefaultKeyword,
-    String: diesel::deserialize::FromSql<diesel::sql_types::Text, C::Backend>,
-{
+#[cfg(feature = "postgres")]
+impl KeyStore for DieselKeyStore<diesel::pg::PgConnection> {
+    fn add_key(&self, key: Key) -> Result<(), KeyStoreError> {
+        KeyStoreOperations::new(&*self.connection_pool.get()?).insert_key(key)
+    }
+
+    fn update_key(
+        &self,
+        public_key: &str,
+        user_id: &str,
+        new_display_name: &str,
+    ) -> Result<(), KeyStoreError> {
+        KeyStoreOperations::new(&*self.connection_pool.get()?).update_key(
+            public_key,
+            user_id,
+            new_display_name,
+        )
+    }
+
+    fn remove_key(&self, public_key: &str, user_id: &str) -> Result<Key, KeyStoreError> {
+        KeyStoreOperations::new(&*self.connection_pool.get()?).remove_key(public_key, user_id)
+    }
+
+    fn fetch_key(&self, public_key: &str, user_id: &str) -> Result<Key, KeyStoreError> {
+        KeyStoreOperations::new(&*self.connection_pool.get()?).fetch_key(public_key, user_id)
+    }
+
+    fn list_keys(&self, user_id: Option<&str>) -> Result<Vec<Key>, KeyStoreError> {
+        match user_id {
+            Some(user_id) => KeyStoreOperations::new(&*self.connection_pool.get()?)
+                .list_keys_with_user_id(user_id),
+            None => KeyStoreOperations::new(&*self.connection_pool.get()?).list_keys(),
+        }
+    }
+
+    #[cfg(feature = "biome-credentials")]
+    fn update_keys_and_password(
+        &self,
+        user_id: &str,
+        updated_password: &str,
+        keys: &[Key],
+    ) -> Result<(), KeyStoreError> {
+        KeyStoreOperations::new(&*self.connection_pool.get()?).update_keys_and_password(
+            user_id,
+            updated_password,
+            keys,
+        )
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl KeyStore for DieselKeyStore<diesel::sqlite::SqliteConnection> {
     fn add_key(&self, key: Key) -> Result<(), KeyStoreError> {
         KeyStoreOperations::new(&*self.connection_pool.get()?).insert_key(key)
     }
