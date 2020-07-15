@@ -64,8 +64,6 @@ pub mod channel;
 pub mod circuit;
 mod collections;
 pub mod consensus;
-#[cfg(feature = "diesel")]
-pub mod database;
 #[cfg(feature = "events")]
 pub mod events;
 mod hex;
