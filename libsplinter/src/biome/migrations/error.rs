@@ -16,19 +16,19 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct ConnectionError {
+pub struct MigrationError {
     pub context: String,
     pub source: Box<dyn Error>,
 }
 
-impl Error for ConnectionError {
+impl Error for MigrationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&*self.source)
     }
 }
 
-impl fmt::Display for ConnectionError {
+impl fmt::Display for MigrationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Unable to connect to database: {}", self.context)
+        write!(f, "Error applying migrations: {}", self.context)
     }
 }

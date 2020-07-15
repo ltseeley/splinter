@@ -15,9 +15,5 @@
  * -----------------------------------------------------------------------------
  */
 
-pub mod error;
-
 embed_migrations!("./src/biome/migrations/diesel/postgres/migrations");
-
-pub use super::database::error::ConnectionError;
 
