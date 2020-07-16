@@ -81,6 +81,7 @@ pub mod rest_api;
 pub mod service;
 pub mod signing;
 pub mod storage;
+pub mod store;
 mod threading;
 pub mod transport;
 

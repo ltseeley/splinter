@@ -41,7 +41,7 @@ impl<C: diesel::Connection> DieselCredentialsStore<C> {
     /// # Arguments
     ///
     ///  * `connection_pool`: connection pool to the database
-    pub fn new(connection_pool: Pool<ConnectionManager<C>>) -> Self {
+    pub(crate) fn new(connection_pool: Pool<ConnectionManager<C>>) -> Self {
         DieselCredentialsStore { connection_pool }
     }
 }
