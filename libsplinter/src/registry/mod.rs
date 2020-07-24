@@ -24,6 +24,9 @@
 //! [`RegistryWriter`]: trait.RegistryWriter.html
 //! [`RwRegistry`]: trait.RwRegistry.html
 
+// TODO: guard with feature
+#[cfg(feature = "diesel")]
+mod diesel;
 mod error;
 #[cfg(feature = "rest-api")]
 mod rest_api;
@@ -33,6 +36,11 @@ mod yaml;
 use std::collections::HashMap;
 use std::iter::ExactSizeIterator;
 
+#[cfg(feature = "diesel")]
+pub use self::diesel::{
+    migrations::{run_postgres_migrations, run_sqlite_migrations},
+    DieselRegistry,
+};
 pub use error::{InvalidNodeError, RegistryError};
 pub use unified::UnifiedRegistry;
 pub use yaml::LocalYamlRegistry;
@@ -258,6 +266,7 @@ pub trait RegistryWriter: Send + Sync {
     ///
     /// * `node` - The node to be added to or updated in the registry.
     ///
+    // TODO: should this return the old definition if it exists?
     fn insert_node(&self, node: Node) -> Result<(), RegistryError>;
 
     /// Deletes a node with the given identity and returns the node if it was in the registry.
@@ -265,6 +274,7 @@ pub trait RegistryWriter: Send + Sync {
     /// # Arguments
     ///
     ///  * `identity` - The Splinter identity of the node.
+    // Rename to "remove" for consistency?
     fn delete_node(&self, identity: &str) -> Result<Option<Node>, RegistryError>;
 }
 
