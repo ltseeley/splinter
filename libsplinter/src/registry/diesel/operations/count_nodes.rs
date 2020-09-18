@@ -14,14 +14,11 @@
 
 //! Provides the "count nodes" operation for the `DieselRegistry`.
 
-use diesel::{dsl::sql_query, prelude::*};
+use diesel::prelude::*;
 
-use crate::registry::{
-    diesel::{models::Count, schema::splinter_nodes},
-    MetadataPredicate, RegistryError,
-};
+use crate::registry::{MetadataPredicate, RegistryError};
 
-use super::{exists_statements_from_metadata_predicates, RegistryOperations};
+use super::{select_nodes_by_metadata_predicate, RegistryOperations};
 
 pub(in crate::registry::diesel) trait RegistryCountNodesOperation {
     fn count_nodes(&self, predicates: &[MetadataPredicate]) -> Result<u32, RegistryError>;
@@ -33,37 +30,13 @@ where
     i64: diesel::deserialize::FromSql<diesel::sql_types::BigInt, C::Backend>,
 {
     fn count_nodes(&self, predicates: &[MetadataPredicate]) -> Result<u32, RegistryError> {
-        if predicates.is_empty() {
-            // No predicates were specified, just count all nodes
-            splinter_nodes::table
-                .count()
-                // Parse as an i64 here because Diesel knows how to convert a `BigInt` into an i64
-                .get_result::<i64>(self.conn)
-                .map(|count| count as u32)
-                .map_err(|err| {
-                    RegistryError::general_error_with_source(
-                        "Failed to count all nodes",
-                        Box::new(err),
-                    )
-                })
-        } else {
-            // With predicates, this query is too complicated for pure Diesel, so a raw SQL
-            // query is needed.
-            let filters = exists_statements_from_metadata_predicates(predicates);
-            sql_query(format!(
-                "SELECT COUNT(*) FROM splinter_nodes WHERE {}",
-                filters
-            ))
-            // The `Count` struct is required because the deserialized type for a `sql_query` must
-            // implement the `QueryableByName` trait, which a raw `i64` does not.
-            .get_result::<Count>(self.conn)
-            .map(|count| count.count as u32)
+        select_nodes_by_metadata_predicate(predicates)
+            .count()
+            // Parse as an i64 here because Diesel knows how to convert a `BigInt` into an i64
+            .get_result::<i64>(self.conn)
+            .map(|count| count as u32)
             .map_err(|err| {
-                RegistryError::general_error_with_source(
-                    "Failed to count nodes matching metadata predicates",
-                    Box::new(err),
-                )
+                RegistryError::general_error_with_source("Failed to count all nodes", Box::new(err))
             })
-        }
     }
 }

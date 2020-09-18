@@ -21,7 +21,16 @@ pub(super) mod has_node;
 pub(super) mod insert_node;
 pub(super) mod list_nodes;
 
+use diesel::{
+    backend::Backend,
+    dsl::{exists, not},
+    prelude::*,
+    query_builder::BoxedSelectStatement,
+};
+
 use crate::registry::MetadataPredicate;
+
+use super::schema::{splinter_nodes, splinter_nodes_metadata};
 
 pub struct RegistryOperations<'a, C> {
     conn: &'a C,
@@ -33,69 +42,94 @@ impl<'a, C: diesel::Connection> RegistryOperations<'a, C> {
     }
 }
 
-/// Generates a string with a series of `EXISTS` SQL statements from a list of node metadata
-/// predicates. Filtering on node metadata is too complicated for pure Diesel, so raw SQL queries
-/// are needed.
-///
-/// This function assumes that the resulting statements will be used with a
-/// `SELECT _ FROM splinter_nodes` query. Each `EXISTS` statement checks for the existence of a
-/// matching metadata value in the `splinter_nodes_metadata` table.
-fn exists_statements_from_metadata_predicates(predicates: &[MetadataPredicate]) -> String {
-    predicates
-        .iter()
-        .map(|predicate| {
-            match predicate {
-                MetadataPredicate::Eq(key, val) => format!(
-                    "EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                     splinter_nodes_metadata.identity = splinter_nodes.identity \
-                     AND splinter_nodes_metadata.key = {} \
-                     AND splinter_nodes_metadata.value = {})",
-                    key, val
-                ),
-                MetadataPredicate::Ne(key, val) => {
+/// Produces a Diesel `SELECT` statement on the `splinter_nodes` table, filtered by the given
+/// metadata predicates.
+fn select_nodes_by_metadata_predicate<'a, DB: Backend + 'a>(
+    predicates: &'a [MetadataPredicate],
+) -> BoxedSelectStatement<
+    'a,
+    // These two `Text` types refers to the columns of the `splinter_nodes` table
+    (diesel::sql_types::Text, diesel::sql_types::Text),
+    splinter_nodes::table,
+    DB,
+> {
+    let mut query = splinter_nodes::table.into_boxed();
+
+    for predicate in predicates {
+        match predicate {
+            MetadataPredicate::Eq(key, val) => {
+                query = query.filter(exists(
+                    splinter_nodes_metadata::table.filter(
+                        splinter_nodes_metadata::identity
+                            .eq(splinter_nodes::identity)
+                            .and(splinter_nodes_metadata::key.eq(key))
+                            .and(splinter_nodes_metadata::value.eq(val)),
+                    ),
+                ));
+            }
+            MetadataPredicate::Ne(key, val) => {
+                query = query.filter(
                     // If the metadata key is not set for a node, the predicate is
                     // satisfied
-                    format!(
-                        "NOT EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                         splinter_nodes_metadata.identity = splinter_nodes.identity \
-                         AND splinter_nodes_metadata.key = {0}) \
-                         OR EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                         splinter_nodes_metadata.identity = splinter_nodes.identity \
-                         AND splinter_nodes_metadata.key = {} \
-                         AND splinter_nodes_metadata.value <> {})",
-                        key, val
-                    )
-                }
-                MetadataPredicate::Gt(key, val) => format!(
-                    "EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                     splinter_nodes_metadata.identity = splinter_nodes.identity \
-                     AND splinter_nodes_metadata.key = {} \
-                     AND splinter_nodes_metadata.value > {})",
-                    key, val
-                ),
-                MetadataPredicate::Ge(key, val) => format!(
-                    "EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                     splinter_nodes_metadata.identity = splinter_nodes.identity \
-                     AND splinter_nodes_metadata.key = {} \
-                     AND splinter_nodes_metadata.value >= {})",
-                    key, val
-                ),
-                MetadataPredicate::Lt(key, val) => format!(
-                    "EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                     splinter_nodes_metadata.identity = splinter_nodes.identity \
-                     AND splinter_nodes_metadata.key = {} \
-                     AND splinter_nodes_metadata.value < {})",
-                    key, val
-                ),
-                MetadataPredicate::Le(key, val) => format!(
-                    "EXISTS (SELECT * FROM splinter_nodes_metadata WHERE \
-                     splinter_nodes_metadata.identity = splinter_nodes.identity \
-                     AND splinter_nodes_metadata.key = {} \
-                     AND splinter_nodes_metadata.value <= {})",
-                    key, val
-                ),
+                    not(exists(
+                        splinter_nodes_metadata::table.filter(
+                            splinter_nodes_metadata::identity
+                                .eq(splinter_nodes::identity)
+                                .and(splinter_nodes_metadata::key.eq(key)),
+                        ),
+                    ))
+                    .or(exists(
+                        splinter_nodes_metadata::table.filter(
+                            splinter_nodes_metadata::identity
+                                .eq(splinter_nodes::identity)
+                                .and(splinter_nodes_metadata::key.eq(key))
+                                .and(splinter_nodes_metadata::value.ne(val)),
+                        ),
+                    )),
+                );
             }
-        })
-        .collect::<Vec<_>>()
-        .join(" AND ")
+            MetadataPredicate::Gt(key, val) => {
+                query = query.filter(exists(
+                    splinter_nodes_metadata::table.filter(
+                        splinter_nodes_metadata::identity
+                            .eq(splinter_nodes::identity)
+                            .and(splinter_nodes_metadata::key.eq(key))
+                            .and(splinter_nodes_metadata::value.gt(val)),
+                    ),
+                ));
+            }
+            MetadataPredicate::Ge(key, val) => {
+                query = query.filter(exists(
+                    splinter_nodes_metadata::table.filter(
+                        splinter_nodes_metadata::identity
+                            .eq(splinter_nodes::identity)
+                            .and(splinter_nodes_metadata::key.eq(key))
+                            .and(splinter_nodes_metadata::value.ge(val)),
+                    ),
+                ));
+            }
+            MetadataPredicate::Lt(key, val) => {
+                query = query.filter(exists(
+                    splinter_nodes_metadata::table.filter(
+                        splinter_nodes_metadata::identity
+                            .eq(splinter_nodes::identity)
+                            .and(splinter_nodes_metadata::key.eq(key))
+                            .and(splinter_nodes_metadata::value.lt(val)),
+                    ),
+                ));
+            }
+            MetadataPredicate::Le(key, val) => {
+                query = query.filter(exists(
+                    splinter_nodes_metadata::table.filter(
+                        splinter_nodes_metadata::identity
+                            .eq(splinter_nodes::identity)
+                            .and(splinter_nodes_metadata::key.eq(key))
+                            .and(splinter_nodes_metadata::value.le(val)),
+                    ),
+                ));
+            }
+        }
+    }
+
+    query
 }

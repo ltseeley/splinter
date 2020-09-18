@@ -14,19 +14,17 @@
 
 //! Provides the "list nodes" operation for the `DieselRegistry`.
 
-use diesel::{dsl::sql_query, prelude::*};
+use diesel::prelude::*;
 
 use crate::registry::{
     diesel::{
         models::{NodeEndpointsModel, NodeKeysModel, NodeMetadataModel, NodesModel},
-        schema::{
-            splinter_nodes, splinter_nodes_endpoints, splinter_nodes_keys, splinter_nodes_metadata,
-        },
+        schema::{splinter_nodes_endpoints, splinter_nodes_keys, splinter_nodes_metadata},
     },
     MetadataPredicate, Node, NodeBuilder, RegistryError,
 };
 
-use super::{exists_statements_from_metadata_predicates, RegistryOperations};
+use super::{select_nodes_by_metadata_predicate, RegistryOperations};
 
 pub(in crate::registry::diesel) trait RegistryListNodesOperation {
     fn list_nodes(&self, predicates: &[MetadataPredicate]) -> Result<Vec<Node>, RegistryError>;
@@ -39,27 +37,14 @@ where
 {
     fn list_nodes(&self, predicates: &[MetadataPredicate]) -> Result<Vec<Node>, RegistryError> {
         self.conn.transaction::<_, _, _>(|| {
-            let nodes: Vec<NodesModel> = if predicates.is_empty() {
-                // No predicates were specified, just get all nodes
-                splinter_nodes::table.load(self.conn).map_err(|err| {
+            let nodes: Vec<NodesModel> = select_nodes_by_metadata_predicate(predicates)
+                .load(self.conn)
+                .map_err(|err| {
                     RegistryError::general_error_with_source(
                         "Failed to get all nodes",
                         Box::new(err),
                     )
-                })?
-            } else {
-                // With predicates, this query is too complicated for pure Diesel, so a raw SQL
-                // query is needed.
-                let filters = exists_statements_from_metadata_predicates(predicates);
-                sql_query(format!("SELECT * FROM splinter_nodes WHERE {}", filters))
-                    .load(self.conn)
-                    .map_err(|err| {
-                        RegistryError::general_error_with_source(
-                            "Failed to get nodes matching metadata predicates",
-                            Box::new(err),
-                        )
-                    })?
-            };
+                })?;
 
             // Checking if there are any nodes here serves two purposes: 1) It saves time by
             // skipping the extra queries if they're not needed, and 2) it avoids a potential error

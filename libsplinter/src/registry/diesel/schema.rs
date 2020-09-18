@@ -42,3 +42,6 @@ table! {
         value -> Text,
     }
 }
+
+// This allows nodes to be filtered based on metadata predicates as part of a query
+allow_tables_to_appear_in_same_query!(splinter_nodes, splinter_nodes_metadata);
