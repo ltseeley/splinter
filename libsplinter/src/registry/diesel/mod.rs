@@ -158,3 +158,112 @@ where
         Box::new(self.clone())
     }
 }
+
+#[cfg(all(test, feature = "sqlite"))]
+mod tests {
+    use super::*;
+
+    use crate::registry::{diesel::migrations::run_sqlite_migrations, tests::*};
+
+    use diesel::sqlite::SqliteConnection;
+
+    /// Verifies the correct functionality of the `fetch_node` method for
+    /// `DieselRegistry<SqliteConnection>`.
+    #[test]
+    fn fetch_node() {
+        let registry = DieselRegistry::new(create_connection_pool_and_migrate());
+
+        registry
+            .insert_node(get_node_1())
+            .expect("Failed to insert node");
+
+        test_fetch_node(&registry, &get_node_1())
+    }
+
+    /// Verifies the correct functionality of the `has_node` method for
+    /// `DieselRegistry<SqliteConnection>`.
+    #[test]
+    fn has_node() {
+        let registry = DieselRegistry::new(create_connection_pool_and_migrate());
+
+        registry
+            .insert_node(get_node_1())
+            .expect("Failed to insert node");
+
+        test_has_node(&registry, &get_node_1().identity)
+    }
+
+    /// Verifies the correct functionality of the `list_nodes` method without metadata predicates
+    /// for `DieselRegistry<SqliteConnection>`.
+    #[test]
+    fn list_nodes_without_predicates() {
+        let registry = DieselRegistry::new(create_connection_pool_and_migrate());
+
+        registry
+            .insert_node(get_node_1())
+            .expect("Failed to insert node1");
+        registry
+            .insert_node(get_node_2())
+            .expect("Failed to insert node2");
+
+        test_list_nodes_without_predicates(&registry, &[get_node_1(), get_node_2()])
+    }
+
+    /// Verifies the correct functionality of the `list_nodes` method when there are no nodes in the
+    /// `DieselRegistry<SqliteConnection>`.
+    #[test]
+    fn list_nodes_empty() {
+        let registry = DieselRegistry::new(create_connection_pool_and_migrate());
+
+        test_list_nodes_empty(&registry)
+    }
+
+    /// Creates a conneciton pool for an in-memory SQLite database with only a single connection
+    /// available. Each connection is backed by a different in-memory SQLite database, so limiting
+    /// the pool to a single connection insures that the same DB is used for all operations.
+    fn create_connection_pool_and_migrate() -> Pool<ConnectionManager<SqliteConnection>> {
+        let connection_manager = ConnectionManager::<SqliteConnection>::new(":memory:");
+        let pool = Pool::builder()
+            .max_size(1)
+            .build(connection_manager)
+            .expect("Failed to build connection pool");
+
+        run_sqlite_migrations(&*pool.get().expect("Failed to get connection for migrations"))
+            .expect("Failed to run migrations");
+
+        pool
+    }
+
+    fn get_node_1() -> Node {
+        Node::builder("Node-123")
+            .with_endpoint("tcps://12.0.0.123:8431")
+            .with_display_name("Bitwise IO - Node 1")
+            .with_key("abcd")
+            .with_metadata("company", "Bitwise IO")
+            .with_metadata("admin", "Bob")
+            .build()
+            .expect("Failed to build node1")
+    }
+
+    fn get_node_2() -> Node {
+        Node::builder("Node-456")
+            .with_endpoint("tcps://12.0.0.123:8434")
+            .with_display_name("Cargill - Node 1")
+            .with_key("0123")
+            .with_metadata("company", "Cargill")
+            .with_metadata("admin", "Carol")
+            .build()
+            .expect("Failed to build node2")
+    }
+
+    fn get_node_3() -> Node {
+        Node::builder("Node-789")
+            .with_endpoint("tcps://12.0.0.123:8435")
+            .with_display_name("Cargill - Node 2")
+            .with_key("4567")
+            .with_metadata("company", "Cargill")
+            .with_metadata("admin", "Charlie")
+            .build()
+            .expect("Failed to build node3")
+    }
+}

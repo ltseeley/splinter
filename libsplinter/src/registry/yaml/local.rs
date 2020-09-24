@@ -282,7 +282,9 @@ mod test {
 
     use tempdir::TempDir;
 
-    use crate::registry::InvalidNodeError;
+    use crate::registry::{tests::*, InvalidNodeError};
+
+    // TODO: how should the DB reigistry handle duplicates/empties on startup? On read, maybe?
 
     ///
     /// Verifies that reading from a YAML file that contains two nodes with the same identity
@@ -538,11 +540,9 @@ mod test {
         }
     }
 
-    ///
-    /// Verifies that fetch_node with a valid identity, returns the correct node.
-    ///
+    /// Verifies the correct functionality of the `fetch_node` method for `LocalYamlRegistry`.
     #[test]
-    fn test_fetch_node_ok() {
+    fn fetch_node() {
         let temp_dir = TempDir::new("test_fetch_node_ok").expect("Failed to create temp dir");
         let path = temp_dir
             .path()
@@ -551,47 +551,16 @@ mod test {
             .expect("Failed to get path")
             .to_string();
 
-        write_to_file(&vec![get_node_1(), get_node_2()], &path);
+        write_to_file(&vec![get_node_1()], &path);
 
         let registry = LocalYamlRegistry::new(&path).expect("Failed to create LocalYamlRegistry");
 
-        let node = registry
-            .fetch_node(&get_node_1().identity)
-            .expect("Failed to fetch node")
-            .expect("Node not found");
-        assert_eq!(node, get_node_1());
+        test_fetch_node(&registry, &get_node_1())
     }
 
-    ///
-    /// Verifies that fetch_node with an invalid identity returns Ok(None)
-    ///
+    /// Verifies the correct functionality of the `has_node` method for `LocalYamlRegistry`.
     #[test]
-    fn test_fetch_node_not_found() {
-        let temp_dir =
-            TempDir::new("test_fetch_node_not_found").expect("Failed to create temp dir");
-        let path = temp_dir
-            .path()
-            .join("registry.yaml")
-            .to_str()
-            .expect("Failed to get path")
-            .to_string();
-
-        write_to_file(&vec![get_node_1(), get_node_2()], &path);
-
-        let registry = LocalYamlRegistry::new(&path).expect("Failed to create LocalYamlRegistry");
-
-        let result = registry.fetch_node("NodeNotInRegistry");
-        match result {
-            Ok(None) => {}
-            res => panic!("Should have gotten Ok(None) but got {:?}", res),
-        }
-    }
-
-    ///
-    /// Verifies that `has_node` properly determines if a node exists in the registry.
-    ///
-    #[test]
-    fn test_has_node() {
+    fn has_node() {
         let temp_dir = TempDir::new("test_has_node").expect("Failed to create temp dir");
         let path = temp_dir
             .path()
@@ -604,19 +573,13 @@ mod test {
 
         let registry = LocalYamlRegistry::new(&path).expect("Failed to create LocalYamlRegistry");
 
-        assert!(registry
-            .has_node(&get_node_1().identity)
-            .expect("Failed to check if node1 exists"));
-        assert!(!registry
-            .has_node(&get_node_2().identity)
-            .expect("Failed to check if node2 exists"));
+        test_has_node(&registry, &get_node_1().identity)
     }
 
-    ///
-    /// Verifies that list_nodes returns a list of nodes.
-    ///
+    /// Verifies the correct functionality of the `list_nodes` method without metadata predicates
+    /// for `LocalYamlRegistry`.
     #[test]
-    fn test_list_nodes_ok() {
+    fn list_nodes_without_predicates() {
         let temp_dir = TempDir::new("test_list_nodes_ok").expect("Failed to create temp dir");
         let path = temp_dir
             .path()
@@ -629,21 +592,13 @@ mod test {
 
         let registry = LocalYamlRegistry::new(&path).expect("Failed to create LocalYamlRegistry");
 
-        let nodes = registry
-            .list_nodes(&[])
-            .expect("Failed to retrieve nodes")
-            .collect::<Vec<_>>();
-
-        assert_eq!(nodes.len(), 2);
-        assert_eq!(nodes[0], get_node_1());
-        assert_eq!(nodes[1], get_node_2());
+        test_list_nodes_without_predicates(&registry, &[get_node_1(), get_node_2()])
     }
 
-    ///
-    /// Verifies that list_nodes returns an empty list when there are no nodes in the registry.
-    ///
+    /// Verifies the correct functionality of the `list_nodes` method when there are no nodes in the
+    /// `LocalYamlRegistry`.
     #[test]
-    fn test_list_nodes_empty_ok() {
+    fn list_nodes_empty() {
         let temp_dir = TempDir::new("test_list_nodes_empty_ok").expect("Failed to create temp dir");
         let path = temp_dir
             .path()
@@ -656,50 +611,13 @@ mod test {
 
         let registry = LocalYamlRegistry::new(&path).expect("Failed to create LocalYamlRegistry");
 
-        let nodes = registry
-            .list_nodes(&[])
-            .expect("Failed to retrieve nodes")
-            .collect::<Vec<_>>();
-        assert_eq!(nodes.len(), 0);
+        test_list_nodes_empty(&registry)
     }
 
-    ///
-    /// Verifies that list_nodes returns the correct items when there is a filter by metadata.
-    ///
+    /// Verifies the correct functionality of the `list_nodes` method for `LocalYamlRegistry` when
+    /// each of the metadata predicates is provided.
     #[test]
-    fn test_list_nodes_filter_metadata_ok() {
-        let temp_dir =
-            TempDir::new("test_list_nodes_filter_metadata_ok").expect("Failed to create temp dir");
-        let path = temp_dir
-            .path()
-            .join("registry.yaml")
-            .to_str()
-            .expect("Failed to get path")
-            .to_string();
-
-        write_to_file(&vec![get_node_1(), get_node_2()], &path);
-
-        let registry = LocalYamlRegistry::new(&path).expect("Failed to create LocalYamlRegistry");
-
-        let filter = vec![MetadataPredicate::Eq(
-            "company".into(),
-            get_node_2().metadata.get("company").unwrap().to_string(),
-        )];
-
-        let nodes = registry
-            .list_nodes(&filter)
-            .expect("Failed to retrieve nodes")
-            .collect::<Vec<_>>();
-
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0], get_node_2());
-    }
-
-    ///
-    /// Verifies that list_nodes returns the correct items when there is more than one filter.
-    ///
-    #[test]
-    fn test_list_nodes_filter_multiple_ok() {
+    fn list_nodes_predicates() {
         let temp_dir =
             TempDir::new("test_list_nodes_filter_multiple_ok").expect("Failed to create temp dir");
         let path = temp_dir

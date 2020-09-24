@@ -400,6 +400,7 @@ mod tests {
     use futures::future::IntoFuture;
     use tempdir::TempDir;
 
+    use crate::registry::tests::*;
     use crate::rest_api::{
         Method, Resource, RestApiBuilder, RestApiServerError, RestApiShutdownHandle,
     };
@@ -556,47 +557,23 @@ mod tests {
         test_config.shutdown();
     }
 
-    /// Verifies that `fetch_node` with an existing identity returns the correct node.
+    /// Verifies the correct functionality of the `fetch_node` method for `RemoteYamlRegistry`.
     #[test]
-    fn fetch_node_ok() {
-        let test_config = TestConfig::setup("fetch_node_ok", Some(mock_registry()));
+    fn fetch_node() {
+        let test_config = TestConfig::setup("fetch_node", Some(mock_registry()));
 
         let remote_registry =
             RemoteYamlRegistry::new(test_config.url(), test_config.path(), None, None)
                 .expect("Failed to create registry");
 
         let expected_node = mock_registry().pop().expect("Failed to get expected node");
-        let node = remote_registry
-            .fetch_node(&expected_node.identity)
-            .expect("Failed to fetch node")
-            .expect("Node not found");
-        assert_eq!(node, expected_node);
+        test_fetch_node(&remote_registry, &expected_node);
 
         remote_registry.shutdown_handle().shutdown();
         test_config.shutdown();
     }
 
-    /// Verifies that `fetch_node` with a non-existent identity returns Ok(None)
-    #[test]
-    fn fetch_node_not_found() {
-        let test_config = TestConfig::setup("fetch_node_not_found", Some(mock_registry()));
-
-        let remote_registry =
-            RemoteYamlRegistry::new(test_config.url(), test_config.path(), None, None)
-                .expect("Failed to create registry");
-
-        assert!(remote_registry
-            .fetch_node("NodeNotInRegistry")
-            .expect("Failed to fetch node")
-            .is_none());
-
-        remote_registry.shutdown_handle().shutdown();
-        test_config.shutdown();
-    }
-
-    ///
-    /// Verifies that `has_node` properly determines if a node exists in the registry.
-    ///
+    /// Verifies the correct functionality of the `has_node` method for `RemoteYamlRegistry`.
     #[test]
     fn has_node() {
         let test_config = TestConfig::setup("has_node", Some(mock_registry()));
@@ -606,41 +583,30 @@ mod tests {
                 .expect("Failed to create registry");
 
         let expected_node = mock_registry().pop().expect("Failed to get expected node");
-        assert!(remote_registry
-            .has_node(&expected_node.identity)
-            .expect("Failed to check if expected_node exists"));
-        assert!(!remote_registry
-            .has_node("NodeNotInRegistry")
-            .expect("Failed to check for non-existent node"));
+        test_has_node(&remote_registry, &expected_node.identity);
 
         remote_registry.shutdown_handle().shutdown();
         test_config.shutdown();
     }
 
-    /// Verifies that `list_nodes` returns all nodes in the remote file.
+    /// Verifies the correct functionality of the `list_nodes` method without metadata predicates
+    /// for `RemoteYamlRegistry`.
     #[test]
-    fn list_nodes() {
+    fn list_nodes_without_predicates() {
         let test_config = TestConfig::setup("list_nodes", Some(mock_registry()));
 
         let remote_registry =
             RemoteYamlRegistry::new(test_config.url(), test_config.path(), None, None)
                 .expect("Failed to create registry");
 
-        let nodes = remote_registry
-            .list_nodes(&[])
-            .expect("Failed to retrieve nodes")
-            .collect::<Vec<_>>();
-
-        assert_eq!(nodes.len(), mock_registry().len());
-        for node in mock_registry() {
-            assert!(nodes.contains(&node));
-        }
+        test_list_nodes_without_predicates(&remote_registry, &mock_registry());
 
         remote_registry.shutdown_handle().shutdown();
         test_config.shutdown();
     }
 
-    /// Verifies that `list_nodes` returns an empty list when there are no nodes in the remote file.
+    /// Verifies the correct functionality of the `list_nodes` method when there are no nodes in the
+    /// `RemoteYamlRegistry`.
     #[test]
     fn list_nodes_empty() {
         let test_config = TestConfig::setup("list_nodes_empty", Some(vec![]));
@@ -649,12 +615,7 @@ mod tests {
             RemoteYamlRegistry::new(test_config.url(), test_config.path(), None, None)
                 .expect("Failed to create registry");
 
-        let nodes = remote_registry
-            .list_nodes(&[])
-            .expect("Failed to retrieve nodes")
-            .collect::<Vec<_>>();
-
-        assert!(nodes.is_empty());
+        test_list_nodes_empty(&remote_registry);
 
         remote_registry.shutdown_handle().shutdown();
         test_config.shutdown();

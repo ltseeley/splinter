@@ -723,4 +723,76 @@ mod tests {
         };
         assert!(validate_nodes(&[node1, node2, valid_node3]).is_ok());
     }
+
+    // `RegistryReader` tests
+    //
+    // These tests assume that the registry has been pre-populated as needed.
+
+    /// Verifies that the `fetch_node` method returns the expected node when requested, and returns
+    /// `Ok(None)` for a node that does not exist in the registry.
+    pub fn test_fetch_node(registry: &dyn RegistryReader, expected_node: &Node) {
+        let node_from_registry = registry
+            .fetch_node(&expected_node.identity)
+            .expect("Failed to fetch node")
+            .expect("Node not found");
+        assert_eq!(&node_from_registry, expected_node);
+
+        let result = registry.fetch_node("NodeNotInRegistry");
+        match result {
+            Ok(None) => {}
+            res => panic!("Should have gotten Ok(None) but got {:?}", res),
+        }
+    }
+
+    /// Verifies that the `has_node` method properly determines if a node exists in the registry.
+    pub fn test_has_node(registry: &dyn RegistryReader, expected_identity: &str) {
+        assert!(registry
+            .has_node(expected_identity)
+            .expect("Failed to check if node1 exists"));
+
+        assert!(!registry
+            .has_node("NodeNotInRegistry")
+            .expect("Failed to check if non-existent node exists"));
+    }
+
+    /// Verifies that the `list_nodes` method returns the expected nodes when no metadata predicates
+    /// are provided.
+    pub fn test_list_nodes_without_predicates(
+        registry: &dyn RegistryReader,
+        expected_nodes: &[Node],
+    ) {
+        let nodes_in_registry = registry
+            .list_nodes(&[])
+            .expect("Failed to retrieve nodes")
+            .collect::<Vec<_>>();
+
+        assert_eq!(nodes_in_registry.len(), expected_nodes.len());
+        for node in expected_nodes {
+            assert!(nodes_in_registry.contains(node));
+        }
+    }
+
+    /// Verifies that the `list_nodes` method returns an empty list when there are no nodes in the
+    /// registry.
+    pub fn test_list_nodes_empty(registry: &dyn RegistryReader) {
+        assert!(registry
+            .list_nodes(&[])
+            .expect("Failed to retrieve nodes")
+            .collect::<Vec<_>>()
+            .is_empty());
+    }
+
+    /// Verifies that the `list_nodes` method returns the expected nodes with the given metadata
+    /// predicates.
+    pub fn test_list_nodes_predicates(registry: &dyn RegistryReader, predicates: &[MetadataPredicate], expected_nodes: &[Node]) {
+        let nodes_in_registry = remote_registry
+            .list_nodes(predicates)
+            .expect("Failed to retrieve nodes")
+            .collect::<Vec<_>>();
+
+        assert_eq!(nodes_in_registry.len(), expected_nodes.len());
+        for node in expected_nodes {
+            assert!(nodes_in_registry.contains(node));
+        }
+    }
 }
