@@ -51,6 +51,7 @@
 //!     .run();
 //! ```
 
+mod auth;
 #[cfg(feature = "rest-api-cors")]
 pub mod cors;
 mod errors;
@@ -65,6 +66,8 @@ use actix_web::{
     HttpResponse, HttpServer,
 };
 use futures::{future::FutureResult, stream::Stream, Future, IntoFuture};
+use oauth2::basic::BasicClient;
+use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use percent_encoding::{AsciiSet, CONTROLS};
 use protobuf::{self, Message};
 use std::boxed::Box;
@@ -457,6 +460,12 @@ impl RequestGuard for ProtocolVersionRangeGuard {
     }
 }
 
+// #[derive(Default)]
+pub struct AppState {
+    github_oauth: BasicClient,
+    google_oauth: BasicClient,
+}
+
 /// `RestApi` is used to create an instance of a restful web server.
 #[derive(Clone)]
 pub struct RestApi {
@@ -489,10 +498,50 @@ impl RestApi {
                         None => cors::Cors::new_allow_any(),
                     };
                     #[cfg(feature = "rest-api-cors")]
-                    let mut app = App::new().wrap(middleware::Logger::default()).wrap(cors);
+                    let mut app = App::new()
+                        .wrap(middleware::Logger::default())
+                        .wrap(cors)
+                        .wrap(auth::Authorization);
 
                     #[cfg(not(feature = "rest-api-cors"))]
-                    let mut app = App::new().wrap(middleware::Logger::default());
+                    let mut app = App::new()
+                        .wrap(middleware::Logger::default())
+                        .wrap(auth::Authorization);
+
+                    let github_oauth = BasicClient::new(
+                        ClientId::new("c59458d38fd02e72ddce".into()),
+                        Some(ClientSecret::new(
+                            "9ce651600d551e5fd23a6c31a9a9fb46d38cb687".into(),
+                        )),
+                        AuthUrl::new("https://github.com/login/oauth/authorize".into())
+                            .expect("Invalid auth URL"),
+                        Some(
+                            TokenUrl::new("https://github.com/login/oauth/access_token".into())
+                                .expect("Invalid token URL"),
+                        ),
+                    );
+
+                    let google_oauth = BasicClient::new(
+                        ClientId::new("318580390194-h06mllp5nrg7i4ec1dp09qg788f2of1b.apps.googleusercontent.com".into()),
+                        Some(ClientSecret::new(
+                            "3ynM9E1IW2d-eusYzBaJd4BM".into(),
+                        )),
+                        AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".into())
+                            .expect("Invalid auth URL"),
+                        Some(
+                            TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".into())
+                                .expect("Invalid token URL"),
+                        ),
+                    )
+                    .set_redirect_url(RedirectUrl::new("http://localhost:8080/oauth/google/auth".to_string()).expect("Invalid redirect URL"));
+
+                    app = app
+                        .data(AppState { github_oauth, google_oauth })
+                        .route("/oauth/github/login", web::get().to(auth::github_login))
+                        .route("/oauth/github/auth", web::get().to(auth::github_auth))
+                        .route("/oauth/google/login", web::get().to(auth::google_login))
+                        .route("/oauth/google/auth", web::get().to(auth::google_auth))
+                        .route("/test", web::get().to(auth::test));
 
                     for resource in resources.clone() {
                         app = app.service(resource.into_route());
