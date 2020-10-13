@@ -29,6 +29,7 @@ use scabbard::service::ScabbardArgValidator;
 use scabbard::service::ScabbardFactory;
 use splinter::admin::rest_api::CircuitResourceProvider;
 use splinter::admin::service::{admin_service_id, AdminService};
+use splinter::auth::{oauth::OAuthClient, identity::github::GithubUserIdentityProvider};
 #[cfg(feature = "biome")]
 use splinter::biome::rest_api::{BiomeRestResourceManager, BiomeRestResourceManagerBuilder};
 use splinter::circuit::directory::CircuitDirectory;
@@ -425,6 +426,15 @@ impl SplinterDaemon {
         #[allow(unused_mut)]
         let mut rest_api_builder = RestApiBuilder::new()
             .with_bind(&self.rest_api_endpoint)
+            .with_oauth_client(
+                OAuthClient::github(
+                    "c59458d38fd02e72ddce".into(),
+                    "4dc9db96b9efae2c078f3b137bb058b104f2b0af".into(),
+                    "http://localhost:8080/oauth/callback".into(),
+                )
+                .expect("Failed to create GitHub OAuth client"),
+            )
+            .with_identity_providers(vec![Box::new(GithubUserIdentityProvider)])
             .add_resource(
                 Resource::build("/openapi.yaml").add_method(Method::Get, routes::get_openapi),
             )
