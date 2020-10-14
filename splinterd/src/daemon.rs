@@ -428,12 +428,12 @@ impl SplinterDaemon {
             .with_bind(&self.rest_api_endpoint)
             .with_oauth_client(
                 OAuthClient::new(
-                    "c59458d38fd02e72ddce".into(),
-                    "4dc9db96b9efae2c078f3b137bb058b104f2b0af".into(),
-                    "https://github.com/login/oauth/authorize".into(),
+                    "318580390194-h06mllp5nrg7i4ec1dp09qg788f2of1b.apps.googleusercontent.com".into(),
+                    "PZbFziSOqAJFVrANiFN3AIhb".into(),
+                    "https://accounts.google.com/o/oauth2/v2/auth".into(),
                     "http://localhost:8080/oauth/callback".into(),
-                    "https://github.com/login/oauth/access_token".into(),
-                    vec!["user:email".into()],
+                    "https://oauth2.googleapis.com/token".into(),
+                    vec!["openid".into(), "email".into(), "profile".into()],
                 )
                 .expect("Failed to create OAuth client"),
             )
