@@ -14,5 +14,6 @@
 
 //! Authentication and authorization for Splinter
 
+pub mod identity;
 #[cfg(feature = "oauth")]
 pub mod oauth;
