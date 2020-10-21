@@ -15,6 +15,8 @@
 //! Tools for identifying clients and users
 
 mod error;
+#[cfg(feature = "oauth-github")]
+pub mod github;
 
 pub use error::IdentityProviderError;
 

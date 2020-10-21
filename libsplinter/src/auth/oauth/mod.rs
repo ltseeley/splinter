@@ -93,6 +93,43 @@ impl OAuthClient {
         })
     }
 
+    /// Creates a new `OAuthClient` with GitHub's authorization and token URLs.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The GitHub OAuth client ID
+    /// * `client_secret` - The GitHub OAuth client secret
+    /// * `redirect_url` - The endpoint that GitHub will redirect to after it has completed
+    ///   authorization
+    #[cfg(feature = "oauth-github")]
+    pub fn github(
+        client_id: String,
+        client_secret: String,
+        redirect_url: String,
+    ) -> Result<Self, OAuthClientConfigurationError> {
+        let client =
+            BasicClient::new(
+                ClientId::new(client_id),
+                Some(ClientSecret::new(client_secret)),
+                AuthUrl::new("https://github.com/login/oauth/authorize".into())
+                    .expect("Authorization URL should be valid"),
+                Some(
+                    TokenUrl::new("https://github.com/login/oauth/access_token".into())
+                        .expect("Token URL should be valid"),
+                ),
+            )
+            .set_redirect_url(RedirectUrl::new(redirect_url).map_err(|err| {
+                OAuthClientConfigurationError::InvalidRedirectUrl(err.to_string())
+            })?);
+        Ok(Self {
+            client,
+            pending_authorizations: Arc::new(Mutex::new(TtlMap::new(Duration::from_secs(
+                PENDING_AUTHORIZATION_EXPIRATION_SECS,
+            )))),
+            scopes: vec![],
+        })
+    }
+
     /// Generates the URL that the end user should be redirected to for authorization
     pub fn get_authorization_url(&self) -> Result<String, OAuthClientError> {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
