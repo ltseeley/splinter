@@ -17,3 +17,5 @@
 pub mod identity;
 #[cfg(feature = "oauth")]
 pub mod oauth;
+#[cfg(feature = "rest-api")]
+pub mod rest_api;
